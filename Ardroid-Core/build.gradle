@@ -14,15 +14,24 @@ repositories {
 
 dependencies {
     compile files("libs/android-support-v4.jar")
+    compile 'com.google.guava:guava:14.0.1'
 }
 
 android {
     compileSdkVersion 17
     buildToolsVersion "17.0.0"
 
+    signingConfigs {
+        debug {
+            storeFile file("debug.keystore")
+        }
+    }
+
     defaultConfig {
+        versionCode 1
+        versionName versionName()
         minSdkVersion 14
-        targetSdkVersion 16
+        targetsdkversion 16
     }
     buildTypes {
         debug {
@@ -33,4 +42,8 @@ android {
 }
 
 dependencies {
+}
+
+private String versionName() {
+    '0.1' + '.' + android.defaultConfig.versionCode
 }
