@@ -3,10 +3,9 @@ package me.hanhaify.ardroid;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothSocket;
 import android.os.Bundle;
 import android.os.Handler;
-import android.view.Menu;
+import android.util.Log;
 import android.view.View;
 import android.view.animation.AnimationUtils;
 import android.widget.TextView;
@@ -16,12 +15,7 @@ import com.google.common.base.Optional;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.util.Set;
-import java.util.UUID;
 
 public class MainActivity extends Activity {
 
@@ -45,21 +39,12 @@ public class MainActivity extends Activity {
         });
     }
 
-
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        super.onCreateOptionsMenu(menu);
-        getMenuInflater().inflate(R.menu.main, menu);
-        return true;
-    }
-
-    /**
-     * Attempts to sign in or register the account specified by the login form.
-     * If there are form errors (invalid email, missing fields, etc.), the
-     * errors are presented and no actual login attempt is made.
-     */
     public void startLoadingData() {
         BluetoothAdapter defaultAdapter = BluetoothAdapter.getDefaultAdapter();
+        if (!defaultAdapter.isEnabled()) {
+            Toast.makeText(this, "Please start bluetooth first", Toast.LENGTH_LONG).show();
+            return;
+        }
         Set<BluetoothDevice> bondedDevices = defaultAdapter.getBondedDevices();
         Optional<BluetoothDevice> device = getDevice(bondedDevices);
         if (!device.isPresent()) {
@@ -68,12 +53,8 @@ public class MainActivity extends Activity {
         }
         defaultAdapter.cancelDiscovery();
         BluetoothDevice bluetoothDevice = device.get();
-        try {
-            BluetoothSocket socket = bluetoothDevice.createRfcommSocketToServiceRecord(UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"));
-            new DataLoadingThread(socket, dataLoadedListener).start();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+
+        new DataLoadingThread(bluetoothDevice).start();
     }
 
     private Optional<BluetoothDevice> getDevice(Set<BluetoothDevice> bondedDevices) {
@@ -90,44 +71,39 @@ public class MainActivity extends Activity {
         };
     }
 
-    private static class DataLoadingThread extends Thread {
-        private final BluetoothSocket socket;
-        private DataLoadedListener dataLoadedListener;
-
-        public DataLoadingThread(BluetoothSocket socket, DataLoadedListener dataLoadedListener) {
-            this.socket = socket;
-            this.dataLoadedListener = dataLoadedListener;
-        }
-
-        @Override
-        public void run() {
-            try {
-                socket.connect();
-
-                InputStream inputStream = socket.getInputStream();
-                InputStreamReader inputStreamReader = new InputStreamReader(inputStream);
-                BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
-
-                while (true) {
-                    String result = bufferedReader.readLine();
-                    this.dataLoadedListener.onNewData(result);
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
-        }
-    }
-
     private class DefaultDataLoadedListener implements DataLoadedListener {
         @Override
-        public void onNewData(final String result) {
+        public void onData(final String result) {
             handler.post(new Runnable() {
                 @Override
                 public void run() {
                     dataField.setText(result + "\r\n" + dataField.getText());
                 }
             });
+        }
+    }
+
+    private class DataLoadingThread extends Thread {
+        private final BluetoothDevice bluetoothDevice;
+
+        public DataLoadingThread(BluetoothDevice bluetoothDevice) {
+            this.bluetoothDevice = bluetoothDevice;
+        }
+
+        @Override
+        public void run() {
+            final BluetoothReader bluetoothReader;
+            bluetoothReader = new BluetoothReader(bluetoothDevice);
+            if (!bluetoothReader.connect()) {
+                Log.w(TAG, "failed to connect to bluetooth device");
+                return;
+            }
+
+            while (true) {
+                String data = bluetoothReader.readLine();
+                Log.w(TAG, "data = " + data);
+                dataLoadedListener.onData(data);
+            }
         }
     }
 }
