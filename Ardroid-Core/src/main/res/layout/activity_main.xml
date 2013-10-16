@@ -20,6 +20,16 @@
                     android:paddingLeft="32dp"
                     android:paddingRight="32dp"
                     />
+            <Button
+                    android:id="@+id/stop_button"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/stop_loading"
+                    android:visibility="gone"
+                    android:paddingLeft="32dp"
+                    android:paddingRight="32dp"
+                    />
 
             <TextView
                     android:layout_marginTop="10dp"

@@ -8,6 +8,7 @@ import android.os.Handler;
 import android.util.Log;
 import android.view.View;
 import android.view.animation.AnimationUtils;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -23,6 +24,9 @@ public class MainActivity extends Activity {
     private TextView dataField;
     private Handler handler = new Handler();
     private MainActivity.DefaultDataLoadedListener dataLoadedListener = new DefaultDataLoadedListener();
+    private DataLoader loader = new DataLoader();
+    private Button loadButton;
+    private Button stopButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -31,10 +35,23 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
         dataField = (TextView) findViewById(R.id.data_field);
         dataField.setAnimation(AnimationUtils.makeInAnimation(this, true));
-        findViewById(R.id.load_button).setOnClickListener(new View.OnClickListener() {
+        loadButton = (Button) findViewById(R.id.load_button);
+        stopButton = (Button)findViewById(R.id.stop_button);
+
+        loadButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 startLoadingData();
+                loadButton.setVisibility(View.GONE);
+                stopButton.setVisibility(View.VISIBLE);
+            }
+        });
+        stopButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                loader.stop();
+                loadButton.setVisibility(View.VISIBLE);
+                stopButton.setVisibility(View.GONE);
             }
         });
     }
@@ -53,8 +70,8 @@ public class MainActivity extends Activity {
         }
         defaultAdapter.cancelDiscovery();
         BluetoothDevice bluetoothDevice = device.get();
-
-        new DataLoadingThread(bluetoothDevice).start();
+        loader.from(bluetoothDevice);
+        new Thread(loader).start();
     }
 
     private Optional<BluetoothDevice> getDevice(Set<BluetoothDevice> bondedDevices) {
@@ -83,27 +100,40 @@ public class MainActivity extends Activity {
         }
     }
 
-    private class DataLoadingThread extends Thread {
-        private final BluetoothDevice bluetoothDevice;
+    @Override
+    protected void onPause() {
+        super.onPause();
+        loader.stop();
+    }
 
-        public DataLoadingThread(BluetoothDevice bluetoothDevice) {
-            this.bluetoothDevice = bluetoothDevice;
+    private class DataLoader implements Runnable {
+        private BluetoothDevice bluetoothDevice;
+        public boolean running;
+
+        public void stop() {
+            running = false;
+        }
+
+        public void from(BluetoothDevice device) {
+            this.bluetoothDevice = device;
         }
 
         @Override
         public void run() {
+            running = true;
             final BluetoothReader bluetoothReader;
             bluetoothReader = new BluetoothReader(bluetoothDevice);
             if (!bluetoothReader.connect()) {
-                Log.w(TAG, "failed to connect to bluetooth device");
+                Log.e(TAG, "failed to connect to bluetooth device");
                 return;
             }
 
-            while (true) {
+            while (running) {
                 String data = bluetoothReader.readLine();
                 Log.w(TAG, "data = " + data);
                 dataLoadedListener.onData(data);
             }
+            bluetoothReader.close();
         }
     }
 }
