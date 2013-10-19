@@ -17,16 +17,26 @@ import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 
 import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
+
+import name.antonsmirnov.firmata.Firmata;
+import name.antonsmirnov.firmata.IFirmata;
+import name.antonsmirnov.firmata.message.StringSysexMessage;
+import name.antonsmirnov.firmata.serial.SerialException;
+
+import static java.lang.String.format;
 
 public class MainActivity extends Activity {
 
     public static final String TAG = MainActivity.class.getSimpleName();
     private TextView dataField;
     private Handler handler = new Handler();
-    private MainActivity.DefaultDataLoadedListener dataLoadedListener = new DefaultDataLoadedListener();
-    private DataLoader loader = new DataLoader();
     private Button loadButton;
     private Button stopButton;
+    private BluetoothSerialAdapter serialAdapter;
+    private Timer timer;
+    private Firmata firmata;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,24 +46,38 @@ public class MainActivity extends Activity {
         dataField = (TextView) findViewById(R.id.data_field);
         dataField.setAnimation(AnimationUtils.makeInAnimation(this, true));
         loadButton = (Button) findViewById(R.id.load_button);
-        stopButton = (Button)findViewById(R.id.stop_button);
+        stopButton = (Button) findViewById(R.id.stop_button);
 
         loadButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                startLoadingData();
-                loadButton.setVisibility(View.GONE);
-                stopButton.setVisibility(View.VISIBLE);
+                startLoading();
             }
         });
         stopButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                loader.stop();
-                loadButton.setVisibility(View.VISIBLE);
-                stopButton.setVisibility(View.GONE);
+                stopLoading();
             }
         });
+    }
+
+    private void startLoading() {
+        startLoadingData();
+        loadButton.setVisibility(View.GONE);
+        stopButton.setVisibility(View.VISIBLE);
+    }
+
+    private void stopLoading() {
+        try {
+            serialAdapter.stop();
+        } catch (SerialException e) {
+            e.printStackTrace();
+        }
+        timer.cancel();
+        dataField.setText("");
+        loadButton.setVisibility(View.VISIBLE);
+        stopButton.setVisibility(View.GONE);
     }
 
     public void startLoadingData() {
@@ -65,13 +89,40 @@ public class MainActivity extends Activity {
         Set<BluetoothDevice> bondedDevices = defaultAdapter.getBondedDevices();
         Optional<BluetoothDevice> device = getDevice(bondedDevices);
         if (!device.isPresent()) {
-            Toast.makeText(this, "No devices available", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "No devices found", Toast.LENGTH_LONG).show();
             return;
         }
         defaultAdapter.cancelDiscovery();
-        BluetoothDevice bluetoothDevice = device.get();
-        loader.from(bluetoothDevice);
-        new Thread(loader).start();
+        final BluetoothDevice bluetoothDevice = device.get();
+
+        serialAdapter = new BluetoothSerialAdapter(bluetoothDevice);
+        firmata = new Firmata(serialAdapter);
+        firmata.addListener(new IFirmata.StubListener() {
+            @Override
+            public void onStringSysexMessageReceived(final StringSysexMessage message) {
+                Log.e(TAG, "Message = " + message);
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        String[] protocol = message.getData().split(";");
+                        dataField.setText(format("Humidity: %s, Temperature: %s", protocol[0], protocol[1]) + "\r\n" + dataField.getText());
+                    }
+                });
+            }
+        });
+        //BluetoothSocket connect need to be on non-ui thread
+        new Thread() {
+            @Override
+            public void run() {
+                try {
+                    serialAdapter.start();
+                    timer = new Timer();
+                    timer.schedule(new DataTask(), 3000, 1000);
+                } catch (SerialException e) {
+                    e.printStackTrace();
+                }
+            }
+        }.start();
     }
 
     private Optional<BluetoothDevice> getDevice(Set<BluetoothDevice> bondedDevices) {
@@ -79,7 +130,6 @@ public class MainActivity extends Activity {
     }
 
     private Predicate<? super BluetoothDevice> byName(final String name) {
-
         return new Predicate<BluetoothDevice>() {
             @Override
             public boolean apply(BluetoothDevice bluetoothDevice) {
@@ -88,52 +138,16 @@ public class MainActivity extends Activity {
         };
     }
 
-    private class DefaultDataLoadedListener implements DataLoadedListener {
-        @Override
-        public void onData(final String result) {
-            handler.post(new Runnable() {
-                @Override
-                public void run() {
-                    dataField.setText(result + "\r\n" + dataField.getText());
-                }
-            });
-        }
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        loader.stop();
-    }
-
-    private class DataLoader implements Runnable {
-        private BluetoothDevice bluetoothDevice;
-        public boolean running;
-
-        public void stop() {
-            running = false;
-        }
-
-        public void from(BluetoothDevice device) {
-            this.bluetoothDevice = device;
-        }
-
+    private class DataTask extends TimerTask {
         @Override
         public void run() {
-            running = true;
-            final BluetoothReader bluetoothReader;
-            bluetoothReader = new BluetoothReader(bluetoothDevice);
-            if (!bluetoothReader.connect()) {
-                Log.e(TAG, "failed to connect to bluetooth device");
-                return;
+            try {
+                StringSysexMessage message = new StringSysexMessage();
+                message.setData("H;T");
+                firmata.send(message);
+            } catch (SerialException e) {
+                e.printStackTrace();
             }
-
-            while (running) {
-                String data = bluetoothReader.readLine();
-                Log.w(TAG, "data = " + data);
-                dataLoadedListener.onData(data);
-            }
-            bluetoothReader.close();
         }
     }
 }

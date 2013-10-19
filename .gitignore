@@ -3,6 +3,10 @@
 /.idea/workspace.xml
 .DS_Store
 .gradletasknamecache
-.idea
-Ardroid.iml
-Ardroid-Core/Ardroid-Core.iml
+
+*.iml
+*.ipr
+*.iws
+.idea/
+Firmata/build
+Serial/build

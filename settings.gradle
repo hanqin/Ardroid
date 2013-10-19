@@ -1,1 +1,3 @@
-include ':Ardroid-Core'
+include "Ardroid-Core"
+include "Firmata"
+include "Serial"
