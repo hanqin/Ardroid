@@ -3,18 +3,26 @@ package me.hanhaify.ardroid;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
 import android.view.View;
-import android.view.animation.AnimationUtils;
 import android.widget.Button;
-import android.widget.TextView;
+import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import com.google.common.base.Optional;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
+
+import org.achartengine.GraphicalView;
+import org.achartengine.chart.CubicLineChart;
+import org.achartengine.chart.PointStyle;
+import org.achartengine.model.XYMultipleSeriesDataset;
+import org.achartengine.model.XYSeries;
+import org.achartengine.renderer.XYMultipleSeriesRenderer;
+import org.achartengine.renderer.XYSeriesRenderer;
 
 import java.util.Set;
 import java.util.Timer;
@@ -25,26 +33,29 @@ import name.antonsmirnov.firmata.IFirmata;
 import name.antonsmirnov.firmata.message.StringSysexMessage;
 import name.antonsmirnov.firmata.serial.SerialException;
 
-import static java.lang.String.format;
+import static android.graphics.Paint.Align;
+import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
+import static android.widget.FrameLayout.LayoutParams;
 
 public class MainActivity extends Activity {
 
     public static final String TAG = MainActivity.class.getSimpleName();
-    private TextView dataField;
     private Handler handler = new Handler();
     private Button loadButton;
     private Button stopButton;
     private BluetoothSerialAdapter serialAdapter;
     private Timer timer;
     private Firmata firmata;
+    private GraphicalView chartView;
+    private XYSeries temperature;
+    private XYSeries humidity;
+    private int xCounter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_main);
-        dataField = (TextView) findViewById(R.id.data_field);
-        dataField.setAnimation(AnimationUtils.makeInAnimation(this, true));
         loadButton = (Button) findViewById(R.id.load_button);
         stopButton = (Button) findViewById(R.id.stop_button);
 
@@ -60,6 +71,71 @@ public class MainActivity extends Activity {
                 stopLoading();
             }
         });
+        FrameLayout container = (FrameLayout) findViewById(R.id.chart_container);
+        CubicLineChart chartConfig = initCubicLineChart();
+
+        LayoutParams params = new LayoutParams(MATCH_PARENT, MATCH_PARENT);
+        chartView = new GraphicalView(this, chartConfig);
+        container.addView(chartView, 0, params);
+    }
+
+    private CubicLineChart initCubicLineChart() {
+        XYMultipleSeriesDataset dataSet = new XYMultipleSeriesDataset();
+        temperature = new XYSeries("Temperature");
+        humidity = new XYSeries("Humidity");
+        dataSet.addSeries(temperature);
+        dataSet.addSeries(humidity);
+
+        XYMultipleSeriesRenderer renderer = new XYMultipleSeriesRenderer(2);
+        renderer.setAxisTitleTextSize(16);
+        renderer.setChartTitleTextSize(20);
+        renderer.setLabelsTextSize(15);
+        renderer.setLegendTextSize(15);
+        renderer.setPointSize(5f);
+        renderer.setMargins(new int[]{20, 30, 15, 20});
+
+        renderer.setChartTitle("Environment Condition");
+        renderer.setXTitle("Time Elapsed (in seconds)");
+        renderer.setYTitle("°C / %rh", 0);
+
+        renderer.setAxesColor(Color.LTGRAY);
+        renderer.setXLabels(12);
+        renderer.setYLabels(10);
+        renderer.setShowGrid(true);
+        renderer.setXLabelsAlign(Align.RIGHT);
+        renderer.setYLabelsAlign(Align.RIGHT);
+        renderer.setZoomButtonsVisible(true);
+        renderer.setPanLimits(new double[]{-10, 20, -10, 40});
+        renderer.setZoomLimits(new double[]{-10, 20, -10, 40});
+        renderer.setZoomRate(1.05f);
+        renderer.setLabelsColor(Color.WHITE);
+        renderer.setXLabelsColor(Color.GREEN);
+        renderer.setYLabelsColor(0, Color.BLUE);
+        renderer.setYLabelsColor(1, Color.YELLOW);
+
+        renderer.setYAxisAlign(Align.RIGHT, 1);
+        renderer.setYLabelsAlign(Align.LEFT, 1);
+
+        renderer.addSeriesRenderer(getTemperatureSeriesRenderer());
+        renderer.addSeriesRenderer(getHumiditySeriesRenderer());
+
+        return new CubicLineChart(dataSet, renderer, 0.3f);
+    }
+
+    private XYSeriesRenderer getTemperatureSeriesRenderer() {
+        XYSeriesRenderer renderer1 = new XYSeriesRenderer();
+        renderer1.setColor(Color.BLUE);
+        renderer1.setPointStyle(PointStyle.POINT);
+        renderer1.setLineWidth(3);
+        return renderer1;
+    }
+
+    private XYSeriesRenderer getHumiditySeriesRenderer() {
+        XYSeriesRenderer renderer1 = new XYSeriesRenderer();
+        renderer1.setColor(Color.YELLOW);
+        renderer1.setLineWidth(3);
+        renderer1.setPointStyle(PointStyle.POINT);
+        return renderer1;
     }
 
     private void startLoading() {
@@ -74,8 +150,10 @@ public class MainActivity extends Activity {
         } catch (SerialException e) {
             e.printStackTrace();
         }
+        temperature.clear();
+        humidity.clear();
+        chartView.repaint();
         timer.cancel();
-        dataField.setText("");
         loadButton.setVisibility(View.VISIBLE);
         stopButton.setVisibility(View.GONE);
     }
@@ -105,7 +183,10 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         String[] protocol = message.getData().split(";");
-                        dataField.setText(format("Humidity: %s, Temperature: %s", protocol[0], protocol[1]) + "\r\n" + dataField.getText());
+                        xCounter++;
+                        temperature.add(xCounter, Double.parseDouble(protocol[0]));
+                        humidity.add(xCounter, Double.parseDouble(protocol[1]));
+                        chartView.repaint();
                     }
                 });
             }
@@ -115,9 +196,10 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 try {
+                    xCounter = 0;
                     serialAdapter.start();
                     timer = new Timer();
-                    timer.schedule(new DataTask(), 3000, 1000);
+                    timer.schedule(new DataTask(), 100, 1000);
                 } catch (SerialException e) {
                     e.printStackTrace();
                 }
