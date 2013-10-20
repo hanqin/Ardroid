@@ -5,6 +5,8 @@ ardroid
 
 ### Stack:
 1. android
+2. AChartEngine
+   - [https://code.google.com/p/achartengine](https://code.google.com/p/achartengine)
 2. gradle
 3. bluetooth
 4. Firmata
