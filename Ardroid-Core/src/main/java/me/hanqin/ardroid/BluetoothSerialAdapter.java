@@ -1,4 +1,4 @@
-package me.hanhaify.ardroid;
+package me.hanqin.ardroid;
 
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
