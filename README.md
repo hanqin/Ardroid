@@ -13,5 +13,6 @@ ardroid
     * Firmata java client - ported from [https://github.com/firmata](https://github.com/firmata)
 5. DHT11 sensor
 
+![ardroid](http://www.hanqin.me/images/ardroid.png "ardroid")
 
 I will use *git submodule* to manage Firmata, sorry for the messy at the moment.
