@@ -15,4 +15,6 @@ ardroid
 
 ![ardroid](http://www.hanqin.me/images/ardroid.png "ardroid")
 
+Tested on Huawei Y300
+
 I will use *git submodule* to manage Firmata, sorry for the messy at the moment.

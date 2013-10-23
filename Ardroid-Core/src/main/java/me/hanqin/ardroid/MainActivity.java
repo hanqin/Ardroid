@@ -40,6 +40,7 @@ import static android.widget.FrameLayout.LayoutParams;
 public class MainActivity extends Activity {
 
     public static final String TAG = MainActivity.class.getSimpleName();
+    public static final int PERIOD_IN_SECONDS = 1;
     private Handler handler = new Handler();
     private Button loadButton;
     private Button stopButton;
@@ -139,26 +140,6 @@ public class MainActivity extends Activity {
     }
 
     private void startLoading() {
-        startLoadingData();
-        loadButton.setVisibility(View.GONE);
-        stopButton.setVisibility(View.VISIBLE);
-    }
-
-    private void stopLoading() {
-        try {
-            serialAdapter.stop();
-        } catch (SerialException e) {
-            e.printStackTrace();
-        }
-        temperature.clear();
-        humidity.clear();
-        chartView.repaint();
-        timer.cancel();
-        loadButton.setVisibility(View.VISIBLE);
-        stopButton.setVisibility(View.GONE);
-    }
-
-    public void startLoadingData() {
         BluetoothAdapter defaultAdapter = BluetoothAdapter.getDefaultAdapter();
         if (!defaultAdapter.isEnabled()) {
             Toast.makeText(this, "Please start bluetooth first", Toast.LENGTH_LONG).show();
@@ -184,27 +165,69 @@ public class MainActivity extends Activity {
                     public void run() {
                         String[] protocol = message.getData().split(";");
                         xCounter++;
-                        temperature.add(xCounter, Double.parseDouble(protocol[0]));
-                        humidity.add(xCounter, Double.parseDouble(protocol[1]));
+                        int seconds = xCounter * PERIOD_IN_SECONDS;
+                        temperature.add(seconds, Double.parseDouble(protocol[0]));
+                        humidity.add(seconds, Double.parseDouble(protocol[1]));
                         chartView.repaint();
                     }
                 });
             }
         });
         //BluetoothSocket connect need to be on non-ui thread
+        // Start with AsyncTask will result in service discovery failed exception[strange]
         new Thread() {
             @Override
             public void run() {
                 try {
-                    xCounter = 0;
                     serialAdapter.start();
-                    timer = new Timer();
-                    timer.schedule(new DataTask(), 100, 1000);
                 } catch (SerialException e) {
                     e.printStackTrace();
+                    return;
                 }
+
+                xCounter = 0;
+                timer = new Timer();
+                timer.schedule(new DataTask(), 100, PERIOD_IN_SECONDS * 1000);
+
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        loadButton.setVisibility(View.GONE);
+                        stopButton.setVisibility(View.VISIBLE);
+                    }
+                });
             }
         }.start();
+    }
+
+    private class DataTask extends TimerTask {
+        @Override
+        public void run() {
+            try {
+                StringSysexMessage message = new StringSysexMessage();
+                message.setData("H;T");
+                firmata.send(message);
+                Log.e(TAG, "message sent " + message);
+            } catch (SerialException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void stopLoading() {
+        try {
+            serialAdapter.stop();
+        } catch (SerialException e) {
+            e.printStackTrace();
+        }
+        temperature.clear();
+        humidity.clear();
+        chartView.repaint();
+        if (timer != null) {
+            timer.cancel();
+        }
+        loadButton.setVisibility(View.VISIBLE);
+        stopButton.setVisibility(View.GONE);
     }
 
     private Optional<BluetoothDevice> getDevice(Set<BluetoothDevice> bondedDevices) {
@@ -218,18 +241,5 @@ public class MainActivity extends Activity {
                 return name.equalsIgnoreCase(bluetoothDevice.getName());
             }
         };
-    }
-
-    private class DataTask extends TimerTask {
-        @Override
-        public void run() {
-            try {
-                StringSysexMessage message = new StringSysexMessage();
-                message.setData("H;T");
-                firmata.send(message);
-            } catch (SerialException e) {
-                e.printStackTrace();
-            }
-        }
     }
 }

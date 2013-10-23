@@ -3,7 +3,6 @@
 
 #include <DHT.h>
 
-#define LED 10
 #define DHTPIN 6
 #define DHTTYPE DHT11
 
